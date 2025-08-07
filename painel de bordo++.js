@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Painel de Bordo ++
 // @namespace    marco.guedes.e259671
-// @version      1.2.2
+// @version      1.2.3
 // @description  Implementa funções ao painel de Bordo Cemig e abre nova guia quando um alerta está ativo.
 // @author       Marco Guedes
 // @match        *https://geo.cemig.com.br/painel_de_bordo/Geo/Clientes*
