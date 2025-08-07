@@ -1,12 +1,12 @@
 // ==UserScript==
 // @name         Painel de Bordo ++
 // @namespace    marco.guedes.e259671
-// @version      1.2.1
+// @version      1.2.2
 // @description  Implementa funções ao painel de Bordo Cemig e abre nova guia quando um alerta está ativo.
 // @author       Marco Guedes
 // @match        *https://geo.cemig.com.br/painel_de_bordo/Geo/Clientes*
-// @updateURL    https://raw.githubusercontent.com/SOADGmr/realenergy-tools/refs/heads/main/painel%20de%20bordo%2B%2B.js
-// @downloadURL  https://raw.githubusercontent.com/SOADGmr/realenergy-tools/refs/heads/main/painel%20de%20bordo%2B%2B.js
+// @updateURL    https://raw.githubusercontent.com/SOADGmr/realenergy-tools/main/painel%20de%20bordo%2B%2B.js
+// @downloadURL  https://raw.githubusercontent.com/SOADGmr/realenergy-tools/main/painel%20de%20bordo%2B%2B.js
 // @grant        window.open
 // ==/UserScript==
 
