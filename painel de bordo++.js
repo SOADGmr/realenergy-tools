@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Painel de Bordo ++
 // @namespace    marco.guedes.e259671
-// @version      1.2.3
+// @version      1.3
 // @description  Implementa funções ao painel de Bordo Cemig e abre nova guia quando um alerta está ativo.
 // @author       Marco Guedes
 // @match        *https://geo.cemig.com.br/painel_de_bordo/Geo/Clientes*
@@ -18,11 +18,12 @@ $(document).ready(function() {
 	// CONFIGURAÇÃO
 	var clientLimitUpper = 100; // Limite superior (para informativo e faixa vermelha)
 	var clientLimitLower = 50; // Limite inferior (para faixa laranja)
+	var clientLimitSmaller = 5; // Limite inferior (para faixa amarela)
     var filterTerm = "real"; // Filtro
     var tabOpenedForStatus = false; // Flag para controlar a abertura da nova aba
 
     // CRIAÇÃO DAS ÁREAS:
-    var outputArea1, outputArea2, outputArea3;
+    var outputArea1, outputArea2, outputArea3, outputArea4;
 
 		// ÁREA 1 (Serviços com 100 clientes ou mais)
 		if (!$('#output-area-1').length) {
@@ -34,6 +35,12 @@ $(document).ready(function() {
 		if (!$('#output-area-2').length) {
 			outputArea2 = $('<div>').attr('id', 'output-area-2');
 			outputArea1.after(outputArea2); // Insere após a area 1
+        }
+
+		// ÁREA 4 (Serviços com mais de 5 clientes e menos de 100)
+		if (!$('#output-area-4').length) {
+			outputArea4 = $('<div>').attr('id', 'output-area-4');
+			outputArea2.after(outputArea4); // Insere após a area 2
         }
 
 		// ÁREA 3 (Informativos)
@@ -244,10 +251,12 @@ $(document).ready(function() {
 			// Limpa áreas:
             outputArea1.empty();
             outputArea2.empty();
+            outputArea4.empty();
             outputArea3.empty();
 
             var hasHighInterruptionServicesUpper = false; // Flag area 1 cor
             var hasMediumInterruptionServices = false; // Flag area 2 cor
+            var hasLowerInterruptionServices = false; // Flag area 4 cor
 
             var aggregatedData = {}; // Dados agregados
 
@@ -358,6 +367,9 @@ $(document).ready(function() {
                 } else if (ad.nclSum >= clientLimitLower && ad.nclSum < clientLimitUpper) {
                     hasMediumInterruptionServices = true; // Define a flag da cor
                     outputArea2.append($('<p>').text(outputString)); // Cria a tag paragrafo com a string
+                } else if (ad.nclSum >= clientLimitSmaller && ad.nclSum < clientLimitLower) {
+                    hasLowerInterruptionServices = true; // Define a flag da cor
+                    outputArea4.append($('<p>').text(outputString)); // Cria a tag paragrafo com a string
                 }
             });
 
@@ -365,13 +377,21 @@ $(document).ready(function() {
 			if (hasHighInterruptionServicesUpper){
 				outputArea1.css('background-color', 'red');
 				outputArea2.css('background-color', hasMediumInterruptionServices ? 'orange' : '#2e2d61');
+				outputArea4.css('background-color', hasLowerInterruptionServices ? 'yellow' : '#2e2d61');
 			} else {
 				if (hasMediumInterruptionServices){
 					outputArea1.css('background-color', '#2e2d61');
 					outputArea2.css('background-color', 'orange');
+                    outputArea4.css('background-color', hasLowerInterruptionServices ? 'yellow' : '#2e2d61');
 				} else {
-					outputArea1.css('background-color', 'lime');
-					outputArea2.css('background-color', 'lime');
+                    if (hasLowerInterruptionServices) {
+					outputArea1.css('background-color', '#2e2d61');
+					outputArea2.css('background-color', '#2e2d61');
+                    outputArea4.css('background-color', 'yellow' );
+                    } else {
+                        outputArea1.css('background-color', 'lime');
+                        outputArea2.css('background-color', 'lime');
+                    }
 				}
 			}
 
@@ -505,6 +525,13 @@ $(document).ready(function() {
 		#output-area-2 {
 			padding: 12px 15px 1px 15px;
 			color: white;
+			text-align: center;
+			font-size: 1.4vw;
+			background-color: lime;
+		}
+		#output-area-4 {
+			padding: 12px 15px 1px 15px;
+			color: #2e2d61;
 			text-align: center;
 			font-size: 1.4vw;
 			background-color: lime;
