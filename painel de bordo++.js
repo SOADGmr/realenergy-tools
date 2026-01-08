@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Painel de Bordo ++
 // @namespace    marco.guedes.e259671
-// @version      1.3.1
+// @version      1.3.2
 // @description  Implementa funções ao painel de Bordo Cemig e abre nova guia quando um alerta está ativo.
 // @author       Marco Guedes
 // @match        *https://geo.cemig.com.br/painel_de_bordo/Geo/Clientes*
@@ -194,7 +194,7 @@ $(document).ready(function() {
 	$(selector11).remove();
 
 	const selector12 = '#tabela-de-dados-clientes > tfoot > tr';
-    $(selector12).css('background-color', '#424175');
+    $(selector12).css('background-color', '#404040');
 
 	const selector13 = '#tabela-de-dados-clientes_processing';
     $(selector13).css('display', 'none');
@@ -376,17 +376,17 @@ $(document).ready(function() {
             // Define a cor de fundo das Areas com base na flag
 			if (hasHighInterruptionServicesUpper){
 				outputArea1.css('background-color', 'red');
-				outputArea2.css('background-color', hasMediumInterruptionServices ? 'orange' : '#2e2d61');
-				outputArea4.css('background-color', hasLowerInterruptionServices ? 'yellow' : '#2e2d61');
+				outputArea2.css('background-color', hasMediumInterruptionServices ? 'orange' : '#2e2e2e');
+				outputArea4.css('background-color', hasLowerInterruptionServices ? 'yellow' : '#2e2e2e');
 			} else {
 				if (hasMediumInterruptionServices){
-					outputArea1.css('background-color', '#2e2d61');
+					outputArea1.css('background-color', '#2e2e2e');
 					outputArea2.css('background-color', 'orange');
-                    outputArea4.css('background-color', hasLowerInterruptionServices ? 'yellow' : '#2e2d61');
+                    outputArea4.css('background-color', hasLowerInterruptionServices ? 'yellow' : '#2e2e2e');
 				} else {
                     if (hasLowerInterruptionServices) {
-					outputArea1.css('background-color', '#2e2d61');
-					outputArea2.css('background-color', '#2e2d61');
+					outputArea1.css('background-color', '#2e2e2e');
+					outputArea2.css('background-color', '#2e2e2e');
                     outputArea4.css('background-color', 'yellow' );
                     } else {
                         outputArea1.css('background-color', 'lime');
@@ -418,14 +418,14 @@ $(document).ready(function() {
 			margin: 0;
 			padding: 0;
 			overflow-x: hidden;
-			background-color: #2e2d61;
+			background-color: #2e2e2e;
 			width: 100vw;
 		}
 		nav {
 			padding: 0;
 		}
 			.navbar-default {
-				background-color: #424175;
+				background-color: #404040;
 				border-style: none;
 				height: 100px;
 			}
@@ -438,7 +438,7 @@ $(document).ready(function() {
 						width: 20%;
 					}
 						.excel_button {
-							background-color: #4c4b7f;
+							background-color: #262626;
 							height: 90px;
 							width: 200px;
 							margin: 5px;
@@ -447,7 +447,7 @@ $(document).ready(function() {
 							border-style: none;
 						}
 						.excel_button:hover {
-							background-color: #6b6ba8; /* Cor um pouco mais clara no hover */
+							background-color: #2E2E2E; /* Cor um pouco mais clara no hover */
 							box-shadow: 0 3px 4px 0 rgba(0, 0, 0, 0.14),
 										0 3px 3px -2px rgba(0, 0, 0, 0.2),
 										0 1px 8px 0 rgba(0, 0, 0, 0.12);
@@ -456,7 +456,7 @@ $(document).ready(function() {
 							box-shadow: 0 4px 5px 0 rgba(0, 0, 0, 0.14),
 										0 1px 10px -2px rgba(0, 0, 0, 0.2),
 										0 2px 16px 0 rgba(0, 0, 0, 0.12);
-							background-color: #7c7cba; /* Cor ainda mais clara ao clicar */
+							background-color: #303030; /* Cor ainda mais clara ao clicar */
 						}
 					#NavTitle {
 						display: flex;
@@ -505,7 +505,7 @@ $(document).ready(function() {
 						}
 							input#Filter {
 								padding: 20px;
-								background-color: #4c4b7f;
+								background-color: #262626;
 								font-weight: normal;
 								height: 90px;
 								width: 200px;
@@ -531,7 +531,7 @@ $(document).ready(function() {
 		}
 		#output-area-4 {
 			padding: 12px 15px 1px 15px;
-			color: #2e2d61;
+			color: #2e2e2e;
 			text-align: center;
 			font-size: 1.4vw;
 			background-color: lime;
@@ -547,13 +547,13 @@ $(document).ready(function() {
 				margin: 0 !important;
 			}
 				.table-bordered {
-					border: 1px solid #2e2d61;
+					border: 1px solid #2e2e2e;
 					border-right-width: 0px;
 					border-left-width: 0px;
 				}
 				#tabela-titulo-tabela {
-					background-color: #424175 !important;
-					border: 1px solid #2e2d61;
+					background-color: #404040 !important;
+					border: 1px solid #2e2e2e;
 					height: 50px;
 					vertical-align: middle;
 					font-size: 1.3vw;
@@ -566,13 +566,13 @@ $(document).ready(function() {
 					font-size: 1.3vw;
 				}
 				.table>tfoot>tr>th, .table-bordered>tfoot>tr>td {
-					border: 1px solid #2e2d61;
+					border: 1px solid #2e2e2e;
 					height: 40px;
 					padding: 0 !important;
 				}
 				.form-control {
-					background-color: #4c4b7f;
-					border-color: #2e2d61;
+					background-color: #262626;
+					border-color: #2e2e2e;
 					border-radius: 0;
 					padding-left: 15px;
 					color: white;
