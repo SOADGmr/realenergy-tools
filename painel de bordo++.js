@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Painel de Bordo ++
 // @namespace    marco.guedes.e259671
-// @version      1.3.2
+// @version      1.3.3
 // @description  Implementa funções ao painel de Bordo Cemig e abre nova guia quando um alerta está ativo.
 // @author       Marco Guedes
 // @match        *https://geo.cemig.com.br/painel_de_bordo/Geo/Clientes*
@@ -37,7 +37,7 @@ $(document).ready(function() {
 			outputArea1.after(outputArea2); // Insere após a area 1
         }
 
-		// ÁREA 4 (Serviços com mais de 5 clientes e menos de 100)
+		// ÁREA 4 (Serviços com mais de 5 clientes e menos de 500)
 		if (!$('#output-area-4').length) {
 			outputArea4 = $('<div>').attr('id', 'output-area-4');
 			outputArea2.after(outputArea4); // Insere após a area 2
@@ -119,15 +119,15 @@ $(document).ready(function() {
 	if (headTable.eq(7).length > 0) {headTable.eq(7).text('Equipe');}
 	if (headTable.eq(11).length > 0) {headTable.eq(11).text('CHI');}
 	//if (headTable.eq(8).length > 0) {headTable.eq(8).text('Município');}
-	if (headTable.eq(19).length > 0) {headTable.eq(19).text('Referência');}
+	if (headTable.eq(19).length > 0) {headTable.eq(20).text('Referência');}
 
 	// APLICAÇÃO DO FILTRO "real" PARA MOSTRAR SERVIÇOS APENAS DA REAL
-    var filterInput = $('#tabela-de-dados-clientes_filter input'); // Onde deve ser aplicado
-    if (filterInput.length) {
+    var filterInput2 = $('#tabela-de-dados-clientes_filter input'); // Onde deve ser aplicado
+    if (filterInput2.length) {
         try {
-            filterInput.val(filterTerm);
-            if (filterInput.get(0)) {
-                filterInput.get(0).dispatchEvent(new Event('input', { bubbles: true }));
+            filterInput2.val(filterTerm);
+            if (filterInput2.get(0)) {
+                filterInput2.get(0).dispatchEvent(new Event('input', { bubbles: true }));
             } else {
                 console.warn("Elemento DOM input filtro não encontrado.");
             }
@@ -143,7 +143,7 @@ $(document).ready(function() {
     if ($.fn.DataTable && $('#tabela-de-dados-clientes').length) { // Verifica se a Tabela já foi carregada
         table = $('#tabela-de-dados-clientes').DataTable(); // Define table como o objeto Tabela
         if (table) {
-            var columnsToHide = [5, 8, 9, 10, 12, 13, 14, 15, 16, 17, 20, 21, 22, 23, 24]; // Colunas a serem ocultas (contagem começa do 0)
+            var columnsToHide = [5, 8, 9, 10, 12, 13, 14, 15, 16, 17, 18, 21, 22, 23, 24,25]; // Colunas a serem ocultas (contagem começa do 0)
             if (columnsToHide.length) {
                 try {
                     table.columns(columnsToHide).visible(false); // Oculta as colunas
