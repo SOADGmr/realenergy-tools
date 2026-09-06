@@ -1,16 +1,32 @@
 // ==UserScript==
 // @name         Login Automático - Painel de Bordo
 // @namespace    marco.guedes.e259671.autologin
-// @version      2.1
+// @version      2.2
 // @description  Realiza o login automático no Painel de Bordo da Cemig quando a sessão expira.
 // @author       Marco Antônio Guedes
-// @match        https://geo.cemig.com.br/painel_de_bordo/Account*
+// @match        https://geo.cemig.com.br/painel_de_bordo/*
 // @grant        GM_setValue
 // @grant        GM_getValue
 // ==/UserScript==
 
 (function() {
     'use strict';
+
+    const isLoginPage = window.location.href.toLowerCase().includes('/account');
+
+    if (!isLoginPage) {
+        // Se NÃO é a página de login, verifica se a aba foi aberta apenas para reautenticar
+        if (sessionStorage.getItem('cemig_autoclose_tab') === 'true') {
+            sessionStorage.removeItem('cemig_autoclose_tab'); // Limpa a flag por segurança
+            window.close(); // Fecha a aba
+        }
+        return; // Interrompe a execução do script para não interferir nas outras páginas
+    }
+
+    // Se a URL contiver a tag de autoclose, salva a intenção de fechar na memória DESTA aba
+    if (window.location.search.includes('autoclose=true')) {
+        sessionStorage.setItem('cemig_autoclose_tab', 'true');
+    }
 
     // Sistema de "Heartbeat" (Batimento cardíaco)
     // Avisa outras abas (como o Painel de Bordo) que a tela de login está ativa e em foco
