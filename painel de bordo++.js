@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Painel de Bordo ++
 // @namespace    marco.guedes.e259671
-// @version      1.3.3
-// @description  Implementa funções ao painel de Bordo Cemig e abre nova guia quando um alerta está ativo.
+// @version      1.4.0
+// @description  Implementa funções ao painel de Bordo Cemig e abre nova guia quando um alerta está ativo. Previne abas de login infinitas.
 // @author       Marco Guedes
 // @match        *https://geo.cemig.com.br/painel_de_bordo/Geo/Clientes*
 // @updateURL    https://raw.githubusercontent.com/SOADGmr/realenergy-tools/main/painel%20de%20bordo%2B%2B.js
@@ -10,8 +10,21 @@
 // @grant        window.open
 // ==/UserScript==
 
-// TIMER PARA RECARREGAR A PÁGINA
-setInterval(function() { location.reload(); }, 120000); // 2 Minutos
+// Função para verificar se a aba de login está aberta (Heartbeat)
+function isLoginPageOpen() {
+    var lastSeen = parseInt(localStorage.getItem('cemig_login_last_seen') || '0', 10);
+    // Se a aba de login atualizou a variável nos últimos 15 segundos, consideramos ela ativa
+    return (Date.now() - lastSeen) < 15000;
+}
+
+// TIMER PARA RECARREGAR A PÁGINA (Com proteção Anti-Loop de Login)
+setInterval(function() {
+    if (!isLoginPageOpen()) {
+        location.reload();
+    } else {
+        console.log("Painel de Bordo++: Recarregamento automático pausado. A tela de login está aguardando o usuário em outra aba.");
+    }
+}, 120000); // 2 Minutos
 
 $(document).ready(function() {
 
@@ -202,7 +215,7 @@ $(document).ready(function() {
 	const selector14 = '#tabela-de-dados-clientes > tfoot > tr > th > input';
 	$(selector14).removeAttr('style'); // Remove completamente o atributo style
 
-    // MUDAR NAVALERTS E ABRIR NOVA ABA
+    // MUDAR NAVALERTS E ABRIR NOVA ABA (Com proteção Anti-Loop)
     var dvStatus = $('#dvStatus');
     var navAlertsDiv = $('#dvAtualizacao');
 
@@ -216,8 +229,12 @@ $(document).ready(function() {
                         navAlertsDiv.css('display', 'none');
                         // Se o alerta está ativo e a aba ainda não foi aberta
                         if (!tabOpenedForStatus) {
-                            window.open('https://geo.cemig.com.br/painel_de_bordo/', '_blank');
-                            tabOpenedForStatus = true; // Marca que a aba foi aberta
+                            if (!isLoginPageOpen()) {
+                                window.open('https://geo.cemig.com.br/painel_de_bordo/', '_blank');
+                                tabOpenedForStatus = true; // Marca que a aba foi aberta
+                            } else {
+                                console.log("Painel de Bordo++: Abertura de aba pausada. Tela de login aguardando usuário.");
+                            }
                         }
                     } else if (currentDisplay === 'none') {
                         navAlertsDiv.css('display', 'block');
@@ -235,8 +252,10 @@ $(document).ready(function() {
             navAlertsDiv.css('display', 'none');
             // Se o alerta está ativo na carga da página e a aba ainda não foi aberta
             if (!tabOpenedForStatus) {
-                window.open('https://geo.cemig.com.br/painel_de_bordo/', '_blank');
-                tabOpenedForStatus = true; // Marca que a aba foi aberta
+                if (!isLoginPageOpen()) {
+                    window.open('https://geo.cemig.com.br/painel_de_bordo/', '_blank');
+                    tabOpenedForStatus = true; // Marca que a aba foi aberta
+                }
             }
         } else if (initialDisplay === 'none') {
              navAlertsDiv.css('display', 'block');
