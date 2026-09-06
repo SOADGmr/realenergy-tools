@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Painel de Bordo ++
 // @namespace    marco.guedes.e259671
-// @version      1.4.0
+// @version      1.4.2
 // @description  Implementa funções ao painel de Bordo Cemig e abre nova guia quando um alerta está ativo. Previne abas de login infinitas.
 // @author       Marco Guedes
 // @match        *https://geo.cemig.com.br/painel_de_bordo/Geo/Clientes*
@@ -230,7 +230,7 @@ $(document).ready(function() {
                         // Se o alerta está ativo e a aba ainda não foi aberta
                         if (!tabOpenedForStatus) {
                             if (!isLoginPageOpen()) {
-                                window.open('https://geo.cemig.com.br/painel_de_bordo/', '_blank');
+                                window.open('https://geo.cemig.com.br/painel_de_bordo/Account?autoclose=true', '_blank');
                                 tabOpenedForStatus = true; // Marca que a aba foi aberta
                             } else {
                                 console.log("Painel de Bordo++: Abertura de aba pausada. Tela de login aguardando usuário.");
@@ -253,7 +253,7 @@ $(document).ready(function() {
             // Se o alerta está ativo na carga da página e a aba ainda não foi aberta
             if (!tabOpenedForStatus) {
                 if (!isLoginPageOpen()) {
-                    window.open('https://geo.cemig.com.br/painel_de_bordo/', '_blank');
+                    window.open('https://geo.cemig.com.br/painel_de_bordo/Account?autoclose=true', '_blank');
                     tabOpenedForStatus = true; // Marca que a aba foi aberta
                 }
             }
