@@ -10,6 +10,8 @@
 // @grant        GM_getValue
 // @grant        GM_addStyle
 // @run-at       document-start
+// @updateURL    https://raw.githubusercontent.com/SOADGmr/realenergy-tools/refs/heads/main/Digiteam%20-%20Sistema%20de%20Filtros.js
+// @downloadURL  https://raw.githubusercontent.com/SOADGmr/realenergy-tools/refs/heads/main/Digiteam%20-%20Sistema%20de%20Filtros.js
 // ==/UserScript==
 
 (function() {
