@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Painel de Bordo ++
 // @namespace    marco.guedes.e259671
-// @version      1.4.2
+// @version      1.6.2
 // @description  Implementa funções ao painel de Bordo Cemig e abre nova guia quando um alerta está ativo. Previne abas de login infinitas.
 // @author       Marco Guedes
 // @match        *https://geo.cemig.com.br/painel_de_bordo/Geo/Clientes*
@@ -17,6 +17,56 @@ function isLoginPageOpen() {
     return (Date.now() - lastSeen) < 15000;
 }
 
+// === SISTEMA DE ALARME E ARMAZENAMENTO ===
+// Som temporário do alarme (substitua a URL abaixo pelo som desejado depois)
+const alarmSound = new Audio('https://actions.google.com/sounds/v1/emergency/beeper_emergency_call.ogg');
+alarmSound.volume = 1.0;
+
+// Função para pegar alarmes reconhecidos (apaga os antigos se for outro dia)
+function getAcknowledgedAlarms() {
+    let data = localStorage.getItem('cemig_alarms_ack');
+    let today = new Date().toDateString(); // Data de hoje (ex: "Wed Oct 25 2023")
+    if (data) {
+        try {
+            let parsed = JSON.parse(data);
+            if (parsed.date === today) {
+                return parsed.acknowledged; // Retorna os serviços ignorados de hoje
+            }
+        } catch(e) {
+            console.error("Erro ao ler alarmes salvos", e);
+        }
+    }
+    return []; // Retorna vazio se for de outro dia ou não houver dados
+}
+
+// Função para salvar ou remover um alarme reconhecido
+function saveAcknowledgedAlarm(sn, isAcknowledged) {
+    let acks = getAcknowledgedAlarms();
+    let today = new Date().toDateString();
+
+    if (isAcknowledged) {
+        if (!acks.includes(sn)) acks.push(sn);
+    } else {
+        acks = acks.filter(item => item !== sn);
+    }
+
+    localStorage.setItem('cemig_alarms_ack', JSON.stringify({ date: today, acknowledged: acks }));
+}
+
+// === SISTEMA DE FILTRO DE POLOS (SJ E LF) ===
+function loadPoloFilters() {
+    let saved = localStorage.getItem('cemig_polo_filters');
+    if (saved) {
+        try { return JSON.parse(saved); } catch(e) {}
+    }
+    return { sj: true, lf: true }; // Padrão: ambos marcados (botões ativados)
+}
+
+function savePoloFilters(sj, lf) {
+    localStorage.setItem('cemig_polo_filters', JSON.stringify({ sj: sj, lf: lf }));
+}
+// ============================================
+
 // TIMER PARA RECARREGAR A PÁGINA (Com proteção Anti-Loop de Login)
 setInterval(function() {
     if (!isLoginPageOpen()) {
@@ -27,6 +77,33 @@ setInterval(function() {
 }, 120000); // 2 Minutos
 
 $(document).ready(function() {
+
+    // === SISTEMA DE ALARME VISUAL (TÍTULO PISCANDO) ===
+    var originalTitle = 'Painel de Ocorrências Real';
+    document.title = originalTitle; // Define o título inicial
+    var visualAlarmInterval = null;
+    var isVisualAlarmActive = false;
+
+    // Iniciar Alarme Visual
+    function startVisualAlarm() {
+        if (isVisualAlarmActive) return;
+        isVisualAlarmActive = true;
+        let showWarning = true;
+
+        visualAlarmInterval = setInterval(function() {
+            document.title = showWarning ? "🚨 ALERTA CRÍTICO! 🚨" : originalTitle;
+            showWarning = !showWarning;
+        }, 1000); // Pisca a cada 1 segundo
+    }
+
+    // Parar Alarme Visual
+    function stopVisualAlarm() {
+        if (!isVisualAlarmActive) return;
+        isVisualAlarmActive = false;
+        clearInterval(visualAlarmInterval);
+        document.title = originalTitle;
+    }
+    // ====================================================
 
 	// CONFIGURAÇÃO
 	var clientLimitUpper = 100; // Limite superior (para informativo e faixa vermelha)
@@ -42,6 +119,19 @@ $(document).ready(function() {
 		if (!$('#output-area-1').length) {
 			outputArea1 = $('<div>').attr('id', 'output-area-1');
 			$('nav.navbar').after(outputArea1); // Insere após o navbar
+
+            // Adiciona o evento de clique nos BOTOES OK (delegação de evento)
+            outputArea1.on('click', '.ack-btn', function() {
+                var sn = $(this).attr('data-sn');
+
+                // Marca a ocorrência como vista para removê-la dos alertas
+                saveAcknowledgedAlarm(sn, true);
+
+                // Força a tabela a reavaliar os alarmes imediatamente sem recarregar a página inteira
+                if ($.fn.DataTable) {
+                    $('#tabela-de-dados-clientes').DataTable().draw(false);
+                }
+            });
 		}
 
 		// ÁREA 2 (Serviços com mais de 50 clientes e menos de 100)
@@ -69,12 +159,9 @@ $(document).ready(function() {
 		var logoImg = $('#imgLogoTI');
 
 		if (filterDiv.length && targetDivLogo.length) {
-			// Move a div do filtro para dentro da div alvo do logo
 			targetDivLogo.append(filterDiv);
 		}
-
 		if (logoImg.length) {
-			// Remove a imagem do logo
 			logoImg.remove();
 		}
 
@@ -104,7 +191,6 @@ $(document).ready(function() {
 				 targetDivCenter.prepend(titleLink);
 			}
 			targetDivCenter.append(sourceDivToMove);
-
 		}
 
 	// REMOVER O TEXTO PESQUISAR DE FORA E COLOCA DENTRO DO INPUT
@@ -112,11 +198,8 @@ $(document).ready(function() {
     if (filterLabel.length) {
         var filterInput = filterLabel.find('input[type="search"]');
         if (filterInput.length) {
-            // Remove todo o conteúdo da label, mas mantém o input
             filterLabel.contents().each(function() {
-                if (this.nodeType === 3) { // Node.TEXT_NODE
-                    $(this).remove();
-                }
+                if (this.nodeType === 3) { $(this).remove(); }
             });
 		}
     }
@@ -125,14 +208,13 @@ $(document).ready(function() {
 	const headTable = $('th#tabela-titulo-tabela');
 	if (headTable.eq(0).length > 0) {headTable.eq(0).text('Serviço');}
 	if (headTable.eq(1).length > 0) {headTable.eq(1).text('Tipo');}
-	if (headTable.eq(2).length > 0) {headTable.eq(2).text('Alimentador');}
-	if (headTable.eq(3).length > 0) {headTable.eq(3).text('Clientes');}
-	if (headTable.eq(4).length > 0) {headTable.eq(4).text('Tempo');}
-	if (headTable.eq(6).length > 0) {headTable.eq(6).text('Status');}
-	if (headTable.eq(7).length > 0) {headTable.eq(7).text('Equipe');}
-	if (headTable.eq(11).length > 0) {headTable.eq(11).text('CHI');}
-	//if (headTable.eq(8).length > 0) {headTable.eq(8).text('Município');}
-	if (headTable.eq(19).length > 0) {headTable.eq(20).text('Referência');}
+	if (headTable.eq(3).length > 0) {headTable.eq(3).text('Alimentador');}
+	if (headTable.eq(4).length > 0) {headTable.eq(4).text('Clientes');}
+	if (headTable.eq(5).length > 0) {headTable.eq(5).text('Tempo');}
+	if (headTable.eq(7).length > 0) {headTable.eq(7).text('Status');}
+	if (headTable.eq(8).length > 0) {headTable.eq(8).text('Equipe');}
+	if (headTable.eq(12).length > 0) {headTable.eq(12).text('CHI');}
+	if (headTable.eq(20).length > 0) {headTable.eq(21).text('Referência');}
 
 	// APLICAÇÃO DO FILTRO "real" PARA MOSTRAR SERVIÇOS APENAS DA REAL
     var filterInput2 = $('#tabela-de-dados-clientes_filter input'); // Onde deve ser aplicado
@@ -141,79 +223,85 @@ $(document).ready(function() {
             filterInput2.val(filterTerm);
             if (filterInput2.get(0)) {
                 filterInput2.get(0).dispatchEvent(new Event('input', { bubbles: true }));
-            } else {
-                console.warn("Elemento DOM input filtro não encontrado.");
             }
         } catch (e) {
             console.error("Erro ao aplicar filtro 'real':", e);
         }
-    } else {
-        console.warn("Input filtro DataTables não encontrado.");
     }
 
     // OCULTANDO COLUNAS INICIAIS INDESEJADAS:
     var table;
-    if ($.fn.DataTable && $('#tabela-de-dados-clientes').length) { // Verifica se a Tabela já foi carregada
-        table = $('#tabela-de-dados-clientes').DataTable(); // Define table como o objeto Tabela
+    if ($.fn.DataTable && $('#tabela-de-dados-clientes').length) {
+        table = $('#tabela-de-dados-clientes').DataTable();
         if (table) {
-            var columnsToHide = [5, 8, 9, 10, 12, 13, 14, 15, 16, 17, 18, 21, 22, 23, 24,25]; // Colunas a serem ocultas (contagem começa do 0)
+            var columnsToHide = [2,6,9,10,11,13,14,15,16,17,19,20,22,23,24,25,26];
             if (columnsToHide.length) {
                 try {
-                    table.columns(columnsToHide).visible(false); // Oculta as colunas
-                } catch (e) {
-                    console.error("Erro ao ocultar colunas:", e);
-                }
+                    table.columns(columnsToHide).visible(false);
+                } catch (e) {}
             }
         }
     }
 
 	// MANIPULANDO ATRIBUTOS INLINE:
 	const selector1 = 'body > nav > div > div.col-xs-4.text-left';
-	$(selector1).removeAttr('style'); // Remove completamente o atributo style
-	$(selector1).attr('id', 'NavExcelBtn'); // Adiciona um atributo id com o valor "NavExcelBtn"
+	$(selector1).removeAttr('style').attr('id', 'NavExcelBtn');
 
 	const selector2 = 'body > nav > div > div.col-xs-4.text-center';
-	$(selector2).removeAttr('style'); // Remove completamente o atributo style
-	$(selector2).attr('id', 'NavTitle'); // Adiciona um atributo id com o valor "NavTitle"
+	$(selector2).removeAttr('style').attr('id', 'NavTitle');
 
 	const selector3 = 'body > nav > div > div.col-xs-4.text-right';
-	$(selector3).removeAttr('style'); // Remove completamente o atributo style
-	$(selector3).attr('id', 'NavFilter'); // Adiciona um atributo id com o valor "NavFilter"
+	$(selector3).removeAttr('style').attr('id', 'NavFilter');
 
-	const selector4 = '#NavExcelBtn > div > button';
-	$(selector4).attr('class', 'excel_button'); // Reatribui os valores de class
+	$('#NavExcelBtn > div > button').attr('class', 'excel_button');
+	$('#NavTitle > div').removeAttr('style').attr('id', 'NavAlerts');
+	$('body > nav > div').attr('id', 'NavRow');
 
-	const selector5 = '#NavTitle > div';
-	$(selector5).removeAttr('style'); // Remove completamente o atributo style
-	$(selector5).attr('id', 'NavAlerts'); // Adiciona um atributo id com o valor "NavAlerts"
+    // INJETA OS BOTÕES ESTILIZADOS DE POLO NO NAVROW
+    if (!$('#polo-filter-container').length) {
+        let filters = loadPoloFilters();
 
-	const selector6 = 'body > nav > div';
-	$(selector6).attr('id', 'NavRow'); // Adiciona um atributo id com o valor "NavRow"
+        let poloDiv = $('<div>').attr('id', 'polo-filter-container');
 
-	const selector7 = '#NavAlerts > div:nth-child(2)';
-	$(selector7).attr('id', 'dvAtualizacao'); // Adiciona um atributo id com o valor "dvAtualizacao"
-    $(selector7).css('margin-right', '');
+        let btnSj = $('<button>')
+            .attr('id', 'btn-polo-sj')
+            .attr('title', 'Ativar alarmes sonoros/visuais para São João')
+            .text('SJ')
+            .addClass('polo-btn ' + (filters.sj ? 'active' : ''));
 
-	const selector8 = '#dvStatus';
-    $(selector8).css('margin-right', '');
+        let btnLf = $('<button>')
+            .attr('id', 'btn-polo-lf')
+            .attr('title', 'Ativar alarmes sonoros/visuais para Lafaiete')
+            .text('LF')
+            .addClass('polo-btn ' + (filters.lf ? 'active' : ''));
 
-	const selector9 = '#tabela-de-dados-clientes_filter > label';
-	$(selector9).attr('id', 'Filter'); // Adiciona um atributo id com o valor "Filter"
+        poloDiv.append(btnSj, btnLf);
+        $('#NavRow').append(poloDiv);
 
-	const selector10 = '#tabela-de-dados-clientes_filter > label > input[type=search]';
-	$(selector10).attr('id', 'Filter'); // Adiciona um atributo id com o valor "Filter"
+        // Ação de clique para os botões de Polo (Toggle)
+        $('#NavRow').on('click', '.polo-btn', function() {
+            // Alterna a classe 'active' para criar o efeito visual de Ligar/Desligar
+            $(this).toggleClass('active');
 
-	const selector11 = '#tabela-de-dados-clientes > thead > tr:nth-child(1)';
-	$(selector11).remove();
+            let sj = $('#btn-polo-sj').hasClass('active');
+            let lf = $('#btn-polo-lf').hasClass('active');
+            savePoloFilters(sj, lf);
 
-	const selector12 = '#tabela-de-dados-clientes > tfoot > tr';
-    $(selector12).css('background-color', '#404040');
+            // Força a tabela a reavaliar os alarmes imediatamente sem recarregar a página
+            if ($.fn.DataTable) {
+                $('#tabela-de-dados-clientes').DataTable().draw(false);
+            }
+        });
+    }
 
-	const selector13 = '#tabela-de-dados-clientes_processing';
-    $(selector13).css('display', 'none');
-
-	const selector14 = '#tabela-de-dados-clientes > tfoot > tr > th > input';
-	$(selector14).removeAttr('style'); // Remove completamente o atributo style
+	$('#NavAlerts > div:nth-child(2)').attr('id', 'dvAtualizacao').css('margin-right', '');
+    $('#dvStatus').css('margin-right', '');
+	$('#tabela-de-dados-clientes_filter > label').attr('id', 'Filter');
+	$('#tabela-de-dados-clientes_filter > label > input[type=search]').attr('id', 'Filter');
+	$('#tabela-de-dados-clientes > thead > tr:nth-child(1)').remove();
+	$('#tabela-de-dados-clientes > tfoot > tr').css('background-color', '#404040');
+	$('#tabela-de-dados-clientes_processing').css('display', 'none');
+	$('#tabela-de-dados-clientes > tfoot > tr > th > input').removeAttr('style');
 
     // MUDAR NAVALERTS E ABRIR NOVA ABA (Com proteção Anti-Loop)
     var dvStatus = $('#dvStatus');
@@ -227,18 +315,17 @@ $(document).ready(function() {
                     if (currentDisplay === 'inline') {
                         $(mutation.target).css('display', 'block');
                         navAlertsDiv.css('display', 'none');
-                        // Se o alerta está ativo e a aba ainda não foi aberta
                         if (!tabOpenedForStatus) {
                             if (!isLoginPageOpen()) {
                                 window.open('https://geo.cemig.com.br/painel_de_bordo/Account?autoclose=true', '_blank');
-                                tabOpenedForStatus = true; // Marca que a aba foi aberta
+                                tabOpenedForStatus = true;
                             } else {
                                 console.log("Painel de Bordo++: Abertura de aba pausada. Tela de login aguardando usuário.");
                             }
                         }
                     } else if (currentDisplay === 'none') {
                         navAlertsDiv.css('display', 'block');
-                        tabOpenedForStatus = false; // Reseta a flag quando o alerta não está mais ativo
+                        tabOpenedForStatus = false;
                     }
                 }
             });
@@ -250,21 +337,20 @@ $(document).ready(function() {
          if (initialDisplay === 'inline') {
             dvStatus.css('display', 'block');
             navAlertsDiv.css('display', 'none');
-            // Se o alerta está ativo na carga da página e a aba ainda não foi aberta
             if (!tabOpenedForStatus) {
                 if (!isLoginPageOpen()) {
                     window.open('https://geo.cemig.com.br/painel_de_bordo/Account?autoclose=true', '_blank');
-                    tabOpenedForStatus = true; // Marca que a aba foi aberta
+                    tabOpenedForStatus = true;
                 }
             }
         } else if (initialDisplay === 'none') {
              navAlertsDiv.css('display', 'block');
-             tabOpenedForStatus = false; // Garante que a flag esteja resetada
+             tabOpenedForStatus = false;
         }
 	}
 
 	// PREENCHE AS ÁREAS CRIADAS, ATUALIZA COLUNA MUNICÍPIO PARA CÓDIGO DE LOCALIDADE
-    if (table) { // Verifica se DataTables foi inicializado
+    if (table) {
 
         table.on('draw.dt', function() {
 			// Limpa áreas:
@@ -273,38 +359,38 @@ $(document).ready(function() {
             outputArea4.empty();
             outputArea3.empty();
 
-            var hasHighInterruptionServicesUpper = false; // Flag area 1 cor
-            var hasMediumInterruptionServices = false; // Flag area 2 cor
-            var hasLowerInterruptionServices = false; // Flag area 4 cor
+            var hasHighInterruptionServicesUpper = false;
+            var hasMediumInterruptionServices = false;
+            var hasLowerInterruptionServices = false;
 
-            var aggregatedData = {}; // Dados agregados
+            var aggregatedData = {};
+            var acknowledgedList = getAcknowledgedAlarms(); // Busca a lista de ignorados de hoje
+            var shouldPlayAlarm = false; // Flag para tocar o alarme nesta recarga
 
-            table.rows({ search: 'applied' }).every(function() { // Itera linhas filtradas
+            // Lê o estado atual dos filtros de polo (baseado na classe dos botões)
+            var poloFilters = loadPoloFilters();
+            var isSjSelected = poloFilters.sj;
+            var isLfSelected = poloFilters.lf;
+
+            table.rows({ search: 'applied' }).every(function() {
                 var rowData = this.data();
-                var sn = rowData.nmb || 'N/A'; // Numero de Serviço
-                var ncl = parseInt(rowData.ncl, 10) || 0; // Numero de Clientes
-                var tpe = parseInt(rowData.tpe, 10) || 0; // Tempo de Pendência
+                var sn = rowData.nmb || 'N/A';
+                var ncl = parseInt(rowData.ncl, 10) || 0;
+                var tpe = parseInt(rowData.tpe, 10) || 0;
 
 				// Agrega dados:
-                if (!aggregatedData[sn]) { // Se não existe dados agregados para esse numero de serviço guarda os dados:
+                if (!aggregatedData[sn]) {
                     aggregatedData[sn] = {
-                        nmb: sn, // Numero de Serviço
-                        nclSum: ncl, // Numero de Clientes
-                        chiSum: 0, // CHI
-                        tpeSum: tpe, // Tempo de Pendência
-                        tipS: rowData.tip || 'MA', // Tipo de Serviço
-                        nar: rowData.nar || 'N/A', // Numero do Alimentador
-                        status: rowData.sta || 'Pendente', // Status
-                        numV: rowData.nve || 'Nenhuma', // Numero da Equipe
-                        mun: rowData.nmu || 'N/A', // Município
-                        trafoRef: rowData.trr || 'N/A', // Trafo de Referência
-                        pol: rowData.rag || 'N/A', // Polo
-                        loc: rowData.cdl || 'N/A' // Localidade
+                        nmb: sn, nclSum: ncl, chiSum: 0, tpeSum: tpe,
+                        tipS: rowData.tip || 'MA', nar: rowData.nar || 'N/A',
+                        status: rowData.sta || 'Pendente', numV: rowData.nve || 'Nenhuma',
+                        mun: rowData.nmu || 'N/A', trafoRef: rowData.trr || 'N/A',
+                        pol: rowData.rag || 'N/A', loc: rowData.cdl || 'N/A'
                     };
-                } else { // Se já existir esse numero de serviço cadastrado
-                    aggregatedData[sn].nclSum += ncl; // Soma clientes
-                    if (tpe > aggregatedData[sn].tpeSum) { // Maior tpe
-                        aggregatedData[sn].tpeSum = tpe; // Guarda o maior tempo de Pendência
+                } else {
+                    aggregatedData[sn].nclSum += ncl;
+                    if (tpe > aggregatedData[sn].tpeSum) {
+                        aggregatedData[sn].tpeSum = tpe;
                     }
                 }
             });
@@ -313,84 +399,126 @@ $(document).ready(function() {
             for (var sn in aggregatedData) {
                 if (aggregatedData.hasOwnProperty(sn)) {
                     var ad = aggregatedData[sn];
-                    ad.chiSum = ad.nclSum * ad.tpeSum; // CHI = Clientes * Tempo
+                    ad.chiSum = ad.nclSum * ad.tpeSum;
                 }
             }
 
-            // Converte o objeto aggregatedData em um array para poder ordenar
             var aggregatedDataArray = Object.values(aggregatedData);
-
-            // Ordena o array por nclSum em ordem decrescente
             aggregatedDataArray.sort(function(a, b) {
                 return b.nclSum - a.nclSum;
             });
 
             // Popula áreas de saída e verifica flags de cor
-            aggregatedDataArray.forEach(function(ad) { // Itera sobre o array ordenado
-                var statusText = ad.status; // Formata status
+            aggregatedDataArray.forEach(function(ad) {
+                var statusText = ad.status;
                 if (!statusText || statusText.trim() === 'P') statusText = "Pendente";
                 else if (statusText.trim() === 'D') statusText = "Designado";
                 else if (statusText.trim() === 'E') statusText = "Em Execução";
                 else if (statusText.trim() === 'A') statusText = "Acionado";
                 else statusText = "Pendente";
 
-                // Cria a string de cada serviço
-                var outputString = `O servico ${ad.tipS} ${ad.nmb}, tem ${ad.nclSum} clientes interrompidos ha ${ad.tpeSum}h, resultando em um CHI de ${ad.chiSum} no alimentador (${ad.nar}) de ${ad.mun}.`; // Use ad.mun here
+                var outputString = `O servico ${ad.tipS} ${ad.nmb}, tem ${ad.nclSum} clientes interrompidos ha ${ad.tpeSum}h, resultando em um CHI de ${ad.chiSum} no alimentador (${ad.nar}) de ${ad.mun}.`;
 
-                // Se o serviço contem um numero de clientes acima do limite maior:
+                // LÓGICA DE FILTRO DE POLO
+                let polString = ad.pol.toUpperCase();
+                let isSJ = polString.includes('SJ') || polString.includes('JOÃO') || polString.includes('JOAO');
+                let isLF = polString.includes('LF') || polString.includes('LAF');
+
+                let isAlarmEnabled = true;
+
+                // Bloqueia a ação se o polo estiver desativado no botão do topo
+                if (isSJ && !isSjSelected) isAlarmEnabled = false;
+                if (isLF && !isLfSelected) isAlarmEnabled = false;
+
+                // Limite Vermelho (Crítico)
                 if (ad.nclSum >= clientLimitUpper) {
-                    hasHighInterruptionServicesUpper = true; // Define a flag de cor
-                    outputArea1.append($('<p>').text(outputString)); // Cria a tag paragrafo com a string
+                    hasHighInterruptionServicesUpper = true;
+
+                    var isAck = acknowledgedList.includes(ad.nmb);
+
+                    // Se o alarme estiver habilitado pelo Polo e AINDA NÃO foi reconhecido (visto)
+                    if (isAlarmEnabled && !isAck) {
+                        shouldPlayAlarm = true; // Aciona o gatilho para tocar o som/sirene!
+
+                        // Layout Flexbox moderno com o Botão 'OK' esquerdo que some ao ser clicado
+                        var pElement = $('<div>').css({
+                            display: 'flex',
+                            alignItems: 'stretch', // Faz o botão e o texto terem a mesma altura da linha
+                            borderBottom: '1px solid rgba(0,0,0,0.2)' // Linha sutil separando os alertas
+                        });
+
+                        var btnElement = $('<button>').attr({
+                            class: 'ack-btn',
+                            'data-sn': ad.nmb,
+                            title: 'Marcar como visto para silenciar o alarme desta ocorrência'
+                        }).text('OK');
+
+                        var textSpan = $('<span>').css({
+                            flex: 1, // Faz o texto ocupar o resto do espaço
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            padding: '12px 15px',
+                            textAlign: 'center'
+                        }).text(outputString);
+
+                        pElement.append(btnElement).append(textSpan);
+                        outputArea1.append(pElement);
+                    } else {
+                        // Polo desativado OU ocorrência JÁ vista e clicada (isAck == true)
+                        // Mostra apenas o texto simples, tornando a linha uma "faixa normal" sem o botão
+                        var simpleP = $('<div>').css({
+                            padding: '12px 15px',
+                            textAlign: 'center',
+                            borderBottom: '1px solid rgba(0,0,0,0.2)'
+                        }).text(outputString);
+                        outputArea1.append(simpleP);
+                    }
 
 					// Cria o informativo
                     var outputString2 = `*❗ INFORMATIVO EMERGENCIAL ❗*\n\n*Polo:* ${ad.pol}\n*Local:* ${ad.loc} - ${ad.mun}\n*Tipo/Numero:* ${ad.tipS} ${ad.nmb}\n*Alimentador:* ${ad.nar}\n*Clientes interrompidos:* ${ad.nclSum}\n*Equipe:* ${ad.numV}\n*Situacao:* ${statusText}\n*Observacao:*`;
-
-                    // Cria o card do informativo
                     var cardElement = $('<pre>').addClass('info-card').text(outputString2);
-
-                    // Cria o botão de cópia do informativo
                     var copyButton = $('<button>').addClass('copy-button').text('Copiar');
 
-                    // Adiciona o evento de clique ao botão
                     copyButton.on('click', function() {
-                        // Copia o informativo do card:
                         var fullCardText = $(this).parent('.info-card').text();
                         var buttonText = $(this).text();
                         var textToCopy = fullCardText.replace(buttonText, '').trim();
-						// Simula um CTRL + C a partir da API Clipboard
                         navigator.clipboard.writeText(textToCopy).then(function() {
-                            // Feedback visual (opcional)
-                            var originalButtonText = $(this).text(); // Guarda o texto original
+                            var originalButtonText = $(this).text();
                             $(this).text('Copiado!').prop('disabled', true);
-                            setTimeout(() => {
-                                $(this).text(originalButtonText).prop('disabled', false); // Restaura o texto original
-                            }, 2000); // Volta ao texto original após 2 segundos
+                            setTimeout(() => { $(this).text(originalButtonText).prop('disabled', false); }, 2000);
                         }.bind(this)).catch(function(err) {
                             console.error('Erro ao copiar texto: ', err);
-                            // Feedback de erro (opcional)
-                            var originalButtonText = $(this).text(); // Guarda o texto original
+                            var originalButtonText = $(this).text();
                             $(this).text('Erro!').prop('disabled', true);
-                            setTimeout(() => {
-                                $(this).text(originalButtonText).prop('disabled', false); // Restaura o texto original
-                            }, 2000);
+                            setTimeout(() => { $(this).text(originalButtonText).prop('disabled', false); }, 2000);
                         }.bind(this));
                     });
 
-                    // Adiciona o botão ao card
                     cardElement.append(copyButton);
-
-                    // Adiciona o card já com o botão à área de saída 3
                     outputArea3.append(cardElement);
 
-                // Se o serviço contem um numero de clientes entre o limite menor e o maior:
+                // Limite Laranja
                 } else if (ad.nclSum >= clientLimitLower && ad.nclSum < clientLimitUpper) {
-                    hasMediumInterruptionServices = true; // Define a flag da cor
-                    outputArea2.append($('<p>').text(outputString)); // Cria a tag paragrafo com a string
+                    hasMediumInterruptionServices = true;
+                    outputArea2.append($('<p>').css({ textAlign: 'center', margin: '5px 0' }).text(outputString));
+                // Limite Amarelo
                 } else if (ad.nclSum >= clientLimitSmaller && ad.nclSum < clientLimitLower) {
-                    hasLowerInterruptionServices = true; // Define a flag da cor
-                    outputArea4.append($('<p>').text(outputString)); // Cria a tag paragrafo com a string
+                    hasLowerInterruptionServices = true;
+                    outputArea4.append($('<p>').css({ textAlign: 'center', margin: '5px 0' }).text(outputString));
                 }
             });
+
+            // Dispara ou Para o sistema sonoro/visual
+            if (shouldPlayAlarm) {
+                startVisualAlarm();
+                alarmSound.play().catch(function(error) {
+                    console.warn("Alarme bloqueado pelo navegador. Interaja com a página uma vez para habilitar o som automático.", error);
+                });
+            } else {
+                stopVisualAlarm();
+            }
 
             // Define a cor de fundo das Areas com base na flag
 			if (hasHighInterruptionServicesUpper){
@@ -415,23 +543,20 @@ $(document).ready(function() {
 			}
 
 			// Atualiza a columa 9 (Município) e troca seus valores pelos códigos de localidade
-            var municipioColumnIndex = 8; // Coluna 9
+            var municipioColumnIndex = 8;
             table.rows({ search: 'applied' }).nodes().each(function(rowNode, index) {
                 var rowData = table.row(rowNode).data();
-                // Encontra a célula da coluna município dentro desta linha
                 var cell = $(rowNode).find('td').eq(municipioColumnIndex);
-                // Atualiza o texto da célula com a propriedade 'mun' dos dados originais da linha
                 cell.text(rowData.mun || 'N/A');
             });
         });
     }
 
-    // MODIFICAR O TÍTULO DA PÁGINA E NO NAVBAR
-    $('head title').text('Painel de Ocorrências Real'); // Head
-    $('#aTitle').text('Painel de Ocorrências Real'); // Navbar
+    // MODIFICAR O TÍTULO NO NAVBAR
+    $('#aTitle').text('Painel de Ocorrências Real');
 
 	// MANIPULAÇÃO DO CSS DA PÁGINA:
-    var styleElement = document.createElement('style'); // Cria um elemento style
+    var styleElement = document.createElement('style');
     styleElement.textContent = `
 		body {
 			margin: 0;
@@ -450,7 +575,34 @@ $(document).ready(function() {
 			}
 				#NavRow {
 					height: 100%;
-					}
+                    position: relative; /* Necessário para alinhar os novos botoes */
+				}
+                #polo-filter-container {
+                    position: absolute;
+                    top: 5px;
+                    right: 21%; /* Fica posicionado perfeitamente entre os titulos e o campo de pesquisa */
+                    display: flex;
+                    gap: 5px;
+                    height: 90px;
+                }
+                .polo-btn {
+                    background-color: #262626; /* Mesma cor base do btn Excel */
+                    color: white;
+                    border: none;
+                    width: 70px;
+                    font-size: 16pt;
+                    cursor: pointer;
+                    margin: 0;
+                    transition: all 0.2s ease;
+                }
+                .polo-btn:hover {
+                    background-color: #2E2E2E;
+                }
+                .polo-btn.active {
+                    background-color: #151515; /* Mais escuro quando ligado */
+                    box-shadow: inset 0px 4px 6px rgba(0, 0, 0, 0.6); /* Efeito de botão pressionado */
+                    color: #fff;
+                }
 					#NavExcelBtn {
 						padding: 0px;
 						height: 100%;
@@ -466,7 +618,7 @@ $(document).ready(function() {
 							border-style: none;
 						}
 						.excel_button:hover {
-							background-color: #2E2E2E; /* Cor um pouco mais clara no hover */
+							background-color: #2E2E2E;
 							box-shadow: 0 3px 4px 0 rgba(0, 0, 0, 0.14),
 										0 3px 3px -2px rgba(0, 0, 0, 0.2),
 										0 1px 8px 0 rgba(0, 0, 0, 0.12);
@@ -475,7 +627,7 @@ $(document).ready(function() {
 							box-shadow: 0 4px 5px 0 rgba(0, 0, 0, 0.14),
 										0 1px 10px -2px rgba(0, 0, 0, 0.2),
 										0 2px 16px 0 rgba(0, 0, 0, 0.12);
-							background-color: #303030; /* Cor ainda mais clara ao clicar */
+							background-color: #303030;
 						}
 					#NavTitle {
 						display: flex;
@@ -534,24 +686,36 @@ $(document).ready(function() {
 								border-style: none;
 							}
 		#output-area-1 {
-			padding: 12px 15px 1px 15px;
+            /* Padding removido para permitir que os novos botões OK encostem na margem */
 			color: white;
-			text-align: center;
 			font-size: 1.4vw;
 			background-color: lime;
    			margin-top: 10px;
 		}
+            /* Novo botão quadrado de reconhecimento da ocorrência */
+            .ack-btn {
+                background-color: #990000; /* Cores do cliente mantidas */
+                color: white;
+                border: none;
+                width: 80px; /* Largura fixa para manter todos quadrados/simétricos */
+                font-weight: bold;
+                font-size: 16pt;
+                cursor: pointer;
+                transition: all 0.2s ease;
+                flex-shrink: 0; /* Garante que o botão não amasse com textos grandes */
+            }
+            .ack-btn:hover {
+                background-color: #550000;
+            }
 		#output-area-2 {
-			padding: 12px 15px 1px 15px;
+			padding: 12px 15px 10px 15px;
 			color: white;
-			text-align: center;
 			font-size: 1.4vw;
 			background-color: lime;
 		}
 		#output-area-4 {
-			padding: 12px 15px 1px 15px;
+			padding: 12px 15px 10px 15px;
 			color: #2e2e2e;
-			text-align: center;
 			font-size: 1.4vw;
 			background-color: lime;
 		}
@@ -560,9 +724,9 @@ $(document).ready(function() {
 		}
 			#tabela-de-dados-clientes {
 				DISPLAY: BLOCK;
-				width: 100vw !important; /* Força a largura da tabela para 100% */
-				min-width: 0; /* Permite que a tabela diminua até 0, se necessário */
-				table-layout: fixed; /* Ajuda a manter a largura das colunas */
+				width: 100vw !important;
+				min-width: 0;
+				table-layout: fixed;
 				margin: 0 !important;
 			}
 				.table-bordered {
@@ -619,11 +783,11 @@ $(document).ready(function() {
 				margin: 0;
 				white-space: pre-wrap;
 				word-wrap: break-word;
-				position: relative; /* Necessário para posicionar o botão de cópia */
-				padding-bottom: 30px; /* Espaço para o botão */
+				position: relative;
+				padding-bottom: 30px;
 				font-family: courier new;
 			}
-				#output-area-3 .copy-button { /* Renomeado o ID */
+				#output-area-3 .copy-button {
 					position: absolute;
 					bottom: 5px;
 					right: 5px;
@@ -634,14 +798,14 @@ $(document).ready(function() {
 					color: white;
 					border: none;
 					border-radius: 3px;
-					z-index: 10; /* Garante que o botão fique acima do texto */
+					z-index: 10;
 				}
-				#output-area-3 .copy-button:hover { /* Renomeado o ID */
+				#output-area-3 .copy-button:hover {
 					background-color: #0056b3;
 				}
         .col-md-6.text-center {
             display: none !important;
         }
 	`;
-    document.head.appendChild(styleElement); // Adiciona o elemento style ao head
+    document.head.appendChild(styleElement);
 });
