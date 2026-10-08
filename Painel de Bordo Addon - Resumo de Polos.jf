@@ -146,27 +146,29 @@ function iniciarAddonResumo(table) {
         });
 
         // ================= GERAR TEXTO SJ =================
-        let sjText = `${sjLocalTotal} EMERGENCIAIS NA TELA DE SJ:\n\n`;
+        let sjText = `*❗${sjLocalTotal} EMERGENCIAIS NA TELA DE SJ:❗*\n\n`;
         for (let city in sjLocalCities) {
             sjText += `- ${sjLocalCities[city]} em ${city}\n`;
         }
-        sjText += `\n${sjCodTotal} EMERGENCIAIS NA TELA DO COD.\n\n`;
+        sjText += `\n*‼️${sjCodTotal} EMERGENCIAIS NA TELA DO COD.‼️*\n\n`;
         for (let tip in sjCodCounts) {
-            let tipName = (tip === 'MA') ? 'manobras' : tip;
+            let tipName = (tip === 'MA') ? 'Manobras' : tip;
             sjText += `- ${sjCodCounts[tip]} ${tipName}\n`;
         }
+        sjText += `\n*❕Comerciais em tela*: 0 || *Vencendo*: 0❕\n\n`;
         createCard(sjText, addonArea);
 
         // ================= GERAR TEXTO LF =================
-        let lfText = `${lfLocalTotal} EMERGENCIAIS NA TELA DE LF:\n\n`;
+        let lfText = `*❗${lfLocalTotal} EMERGENCIAIS NA TELA DE LF:❗*\n\n`;
         for (let city in lfLocalCities) {
             lfText += `- ${lfLocalCities[city]} em ${city}\n`;
         }
-        lfText += `\n${lfCodTotal} EMERGENCIAIS NA TELA DO COD.\n\n`;
+        lfText += `\n*‼️${lfCodTotal} EMERGENCIAIS NA TELA DO COD.‼️*\n\n`;
         for (let tip in lfCodCounts) {
-            let tipName = (tip === 'MA') ? 'manobras' : tip;
+            let tipName = (tip === 'MA') ? 'Manobras' : tip;
             lfText += `- ${lfCodCounts[tip]} ${tipName}\n`;
         }
+        lfText += `\n*❕Comerciais em tela*: 0 || *Vencendo*: 0❕\n\n`;
         createCard(lfText, addonArea);
     });
 
