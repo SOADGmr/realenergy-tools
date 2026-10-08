@@ -1,0 +1,195 @@
+// ==UserScript==
+// @name         Painel de Bordo Addon - Resumo de Polos
+// @namespace    marco.guedes.e259671
+// @version      1.1.1
+// @description  Cria cards de resumo quantitativo de serviços por município (Tela Local) e por tipo (Tela COD) para SJ e LF.
+// @author       Marco Guedes
+// @match        *https://geo.cemig.com.br/painel_de_bordo/Geo/Clientes*
+// @grant        none
+// ==/UserScript==
+
+// Aguarda a tabela principal ser completamente carregada pelo outro script/página
+let checkTableInterval = setInterval(function() {
+    if (typeof $ !== 'undefined' && $.fn.DataTable && $('#tabela-de-dados-clientes').length) {
+        let table = $('#tabela-de-dados-clientes').DataTable();
+        // Verifica se o objeto table realmente instanciou
+        if (table && table.rows) {
+            clearInterval(checkTableInterval);
+            iniciarAddonResumo(table);
+        }
+    }
+}, 1000); // Tenta a cada 1 segundo
+
+function iniciarAddonResumo(table) {
+
+    // Tipos de serviço que pertencem à TELA DO COD
+    const codTypes = ['RC09', 'RC08', 'RC11', 'NSRI', 'MA'];
+
+    // Injeta o CSS específico dos novos cards do Addon
+    var style = document.createElement('style');
+    style.innerHTML = `
+        #addon-resumo-area {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            width: 100%;
+            margin-top: 10px;
+            margin-bottom: 15px;
+        }
+        .addon-info-card {
+            width: calc(20% - 8px) !important;
+            min-width: 250px;
+            box-sizing: border-box;
+            padding: 10px;
+            border: 1px solid #444;
+            background-color: #fff;
+            margin: 0;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            position: relative;
+            padding-bottom: 30px;
+            font-family: courier new;
+            font-size: 12px;
+            color: #2e2e2e;
+        }
+        .addon-copy-button {
+            position: absolute;
+            bottom: 5px;
+            right: 5px;
+            padding: 2px 5px;
+            font-size: 0.8em;
+            cursor: pointer;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            z-index: 10;
+        }
+        .addon-copy-button:hover {
+            background-color: #0056b3;
+        }
+    `;
+    document.head.appendChild(style);
+
+    // Cria a área onde os cards de resumo vão ficar
+    let addonArea = $('<div>').attr('id', 'addon-resumo-area');
+
+    // Insere essa área logo após o output-area-3 (se existir) ou após o wrapper da tabela
+    if ($('#output-area-3').length) {
+        $('#output-area-3').after(addonArea);
+    } else {
+        $('.dataTables_wrapper').after(addonArea);
+    }
+
+    // Essa função vai rodar sempre que a tabela for desenhada/atualizada
+    table.on('draw.dt', function() {
+        addonArea.empty(); // Limpa os cards antigos
+
+        let sjLocalCities = {};
+        let lfLocalCities = {};
+        let sjCodCounts = {};
+        let lfCodCounts = {};
+
+        let sjLocalTotal = 0;
+        let lfLocalTotal = 0;
+        let sjCodTotal = 0;
+        let lfCodTotal = 0;
+
+        // Set para garantir que cada serviço só seja contado uma vez (agrupamento de múltiplas linhas)
+        let processedSNs = new Set();
+
+        // Varre todas as linhas visíveis (aplicadas pelo filtro de pesquisa)
+        table.rows({ search: 'applied' }).every(function() {
+            var data = this.data();
+            var sn = (data.nmb || '').toUpperCase().trim();
+
+            // Ignora se não houver número ou se já contamos essa ocorrência nesta rodada
+            if (!sn || processedSNs.has(sn)) return;
+            processedSNs.add(sn);
+
+            var tipRaw = (data.tip || '').toUpperCase().trim();
+            var tip = tipRaw;
+
+            // Lógica de identificação de Manobras: se TIPO for vazio na tabela, terminar em -M OU começar com MA (ex: MA27)
+            if (tipRaw === '' || sn.endsWith('-M') || tipRaw.startsWith('MA')) {
+                tip = 'MA';
+            } else if (tip === '') {
+                tip = 'N/A';
+            }
+
+            var mun = (data.nmu || 'N/A').toUpperCase().trim();
+            var pol = (data.rag || 'N/A').toUpperCase().trim();
+
+            let isSJ = pol.includes('SJ') || pol.includes('JOÃO') || pol.includes('JOAO');
+            let isLF = pol.includes('LF') || pol.includes('LAF');
+
+            // Verifica se o tipo pertence à tela do COD
+            let isCOD = codTypes.includes(tip);
+
+            if (isSJ) {
+                if (isCOD) {
+                    sjCodCounts[tip] = (sjCodCounts[tip] || 0) + 1;
+                    sjCodTotal++;
+                } else {
+                    sjLocalCities[mun] = (sjLocalCities[mun] || 0) + 1;
+                    sjLocalTotal++;
+                }
+            } else if (isLF) {
+                if (isCOD) {
+                    lfCodCounts[tip] = (lfCodCounts[tip] || 0) + 1;
+                    lfCodTotal++;
+                } else {
+                    lfLocalCities[mun] = (lfLocalCities[mun] || 0) + 1;
+                    lfLocalTotal++;
+                }
+            }
+        });
+
+        // ================= GERAR TEXTO SJ =================
+        let sjText = `${sjLocalTotal} EMERGENCIAIS NA TELA DE SJ:\n\n`;
+        for (let city in sjLocalCities) {
+            sjText += `- ${sjLocalCities[city]} em ${city}\n`;
+        }
+        sjText += `\n${sjCodTotal} EMERGENCIAIS NA TELA DO COD.\n\n`;
+        for (let tip in sjCodCounts) {
+            let tipName = (tip === 'MA') ? 'manobras' : tip;
+            sjText += `- ${sjCodCounts[tip]} ${tipName}\n`;
+        }
+        createCard(sjText, addonArea);
+
+        // ================= GERAR TEXTO LF =================
+        let lfText = `${lfLocalTotal} EMERGENCIAIS NA TELA DE LF:\n\n`;
+        for (let city in lfLocalCities) {
+            lfText += `- ${lfLocalCities[city]} em ${city}\n`;
+        }
+        lfText += `\n${lfCodTotal} EMERGENCIAIS NA TELA DO COD.\n\n`;
+        for (let tip in lfCodCounts) {
+            let tipName = (tip === 'MA') ? 'manobras' : tip;
+            lfText += `- ${lfCodCounts[tip]} ${tipName}\n`;
+        }
+        createCard(lfText, addonArea);
+    });
+
+    // Função auxiliar para gerar a caixa de texto e botão copiar dinamicamente
+    function createCard(text, container) {
+        var cardElement = $('<pre>').addClass('addon-info-card').text(text);
+        var copyButton = $('<button>').addClass('addon-copy-button').text('Copiar');
+
+        copyButton.on('click', function() {
+            var fullCardText = $(this).parent('.addon-info-card').text();
+            var buttonText = $(this).text();
+            var textToCopy = fullCardText.replace(buttonText, '').trim(); // Remove a palavra "Copiar"
+
+            navigator.clipboard.writeText(textToCopy).then(function() {
+                var originalButtonText = $(this).text();
+                $(this).text('Copiado!').prop('disabled', true);
+                setTimeout(() => { $(this).text(originalButtonText).prop('disabled', false); }, 2000);
+            }.bind(this)).catch(function(err) {
+                console.error('Erro ao copiar texto do Addon: ', err);
+            });
+        });
+
+        cardElement.append(copyButton);
+        container.append(cardElement);
+    }
+}
