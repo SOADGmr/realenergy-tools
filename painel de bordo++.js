@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Painel de Bordo ++
 // @namespace    marco.guedes.e259671
-// @version      1.6.2
+// @version      1.7.0
 // @description  Implementa funções ao painel de Bordo Cemig e abre nova guia quando um alerta está ativo. Previne abas de login infinitas.
 // @author       Marco Guedes
 // @match        *https://geo.cemig.com.br/painel_de_bordo/Geo/Clientes*
@@ -65,6 +65,19 @@ function loadPoloFilters() {
 function savePoloFilters(sj, lf) {
     localStorage.setItem('cemig_polo_filters', JSON.stringify({ sj: sj, lf: lf }));
 }
+
+// === FUNÇÃO AUXILIAR PARA CONVERTER COMPENSAÇÃO FINANCEIRA ===
+function parseCompensacao(val) {
+    if (val === undefined || val === null || val === '') return 0;
+    if (typeof val === 'number') return val;
+    var str = String(val).replace(/[^\d.,-]/g, '').trim();
+    if (!str) return 0;
+    // Se possuir vírgula (padrão BR: "1.250,50"), remove pontos de milhar e troca vírgula por ponto
+    if (str.includes(',')) {
+        str = str.replace(/\./g, '').replace(',', '.');
+    }
+    return parseFloat(str) || 0;
+}
 // ============================================
 
 // TIMER PARA RECARREGAR A PÁGINA (Com proteção Anti-Loop de Login)
@@ -106,7 +119,8 @@ $(document).ready(function() {
     // ====================================================
 
 	// CONFIGURAÇÃO
-	var clientLimitUpper = 100; // Limite superior (para informativo e faixa vermelha)
+	var clientLimitUpper = 100; // Limite superior de clientes (para informativo e faixa vermelha)
+	var compLimitUpper = 500; // Limite mínimo de Compensação Financeira (para informativo e faixa vermelha)
 	var clientLimitLower = 50; // Limite inferior (para faixa laranja)
 	var clientLimitSmaller = 5; // Limite inferior (para faixa amarela)
     var filterTerm = "real"; // Filtro
@@ -372,16 +386,33 @@ $(document).ready(function() {
             var isSjSelected = poloFilters.sj;
             var isLfSelected = poloFilters.lf;
 
-            table.rows({ search: 'applied' }).every(function() {
+            // Identifica automaticamente a coluna de Compensação Financeira (ou usa índice 6 = Coluna G como padrão)
+            var compColIndex = -1;
+            table.columns().every(function(idx) {
+                var thText = $(this.header()).text().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+                var sTitle = (table.settings()[0].aoColumns[idx].sTitle || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+                if (thText.includes('COMPENSA') || thText.includes('FINANC') || sTitle.includes('COMPENSA') || sTitle.includes('FINANC')) {
+                    compColIndex = idx;
+                }
+            });
+            if (compColIndex === -1) {
+                compColIndex = 6; // Fallback direto para a Coluna G (A=0, B=1, C=2, D=3, E=4, F=5, G=6)
+            }
+
+            table.rows({ search: 'applied' }).every(function(rowIdx) {
                 var rowData = this.data();
                 var sn = rowData.nmb || 'N/A';
                 var ncl = parseInt(rowData.ncl, 10) || 0;
                 var tpe = parseInt(rowData.tpe, 10) || 0;
 
+                // Extrai o valor da Compensação Financeira da linha atual
+                var rawComp = table.cell(rowIdx, compColIndex).data();
+                var comp = parseCompensacao(rawComp);
+
 				// Agrega dados:
                 if (!aggregatedData[sn]) {
                     aggregatedData[sn] = {
-                        nmb: sn, nclSum: ncl, chiSum: 0, tpeSum: tpe,
+                        nmb: sn, nclSum: ncl, compSum: comp, chiSum: 0, tpeSum: tpe,
                         tipS: rowData.tip || 'MA', nar: rowData.nar || 'N/A',
                         status: rowData.sta || 'Pendente', numV: rowData.nve || 'Nenhuma',
                         mun: rowData.nmu || 'N/A', trafoRef: rowData.trr || 'N/A',
@@ -389,6 +420,7 @@ $(document).ready(function() {
                     };
                 } else {
                     aggregatedData[sn].nclSum += ncl;
+                    aggregatedData[sn].compSum += comp;
                     if (tpe > aggregatedData[sn].tpeSum) {
                         aggregatedData[sn].tpeSum = tpe;
                     }
@@ -417,7 +449,9 @@ $(document).ready(function() {
                 else if (statusText.trim() === 'A') statusText = "Acionado";
                 else statusText = "Pendente";
 
+                var compFormatado = ad.compSum.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                 var outputString = `O servico ${ad.tipS} ${ad.nmb}, tem ${ad.nclSum} clientes interrompidos ha ${ad.tpeSum}h, resultando em um CHI de ${ad.chiSum} no alimentador (${ad.nar}) de ${ad.mun}.`;
+                var outputStringRed = `O servico ${ad.tipS} ${ad.nmb}, tem ${ad.nclSum} clientes interrompidos ha ${ad.tpeSum}h, resultando em um CHI de ${ad.chiSum} (Comp. Financeira: R$ ${compFormatado}) no alimentador (${ad.nar}) de ${ad.mun}.`;
 
                 // LÓGICA DE FILTRO DE POLO
                 let polString = ad.pol.toUpperCase();
@@ -430,8 +464,8 @@ $(document).ready(function() {
                 if (isSJ && !isSjSelected) isAlarmEnabled = false;
                 if (isLF && !isLfSelected) isAlarmEnabled = false;
 
-                // Limite Vermelho (Crítico)
-                if (ad.nclSum >= clientLimitUpper) {
+                // Limite Vermelho (Crítico: 100+ clientes OU 500+ de Compensação Financeira)
+                if (ad.nclSum >= clientLimitUpper || ad.compSum >= compLimitUpper) {
                     hasHighInterruptionServicesUpper = true;
 
                     var isAck = acknowledgedList.includes(ad.nmb);
@@ -460,7 +494,7 @@ $(document).ready(function() {
                             justifyContent: 'center',
                             padding: '12px 15px',
                             textAlign: 'center'
-                        }).text(outputString);
+                        }).text(outputStringRed);
 
                         pElement.append(btnElement).append(textSpan);
                         outputArea1.append(pElement);
@@ -471,12 +505,12 @@ $(document).ready(function() {
                             padding: '12px 15px',
                             textAlign: 'center',
                             borderBottom: '1px solid rgba(0,0,0,0.2)'
-                        }).text(outputString);
+                        }).text(outputStringRed);
                         outputArea1.append(simpleP);
                     }
 
 					// Cria o informativo
-                    var outputString2 = `*❗ INFORMATIVO EMERGENCIAL ❗*\n\n*Polo:* ${ad.pol}\n*Local:* ${ad.loc} - ${ad.mun}\n*Tipo/Numero:* ${ad.tipS} ${ad.nmb}\n*Alimentador:* ${ad.nar}\n*Clientes interrompidos:* ${ad.nclSum}\n*Equipe:* ${ad.numV}\n*Situacao:* ${statusText}\n*Observacao:*`;
+                    var outputString2 = `*❗ INFORMATIVO EMERGENCIAL ❗*\n\n*Polo:* ${ad.pol}\n*Local:* ${ad.loc} - ${ad.mun}\n*Tipo/Numero:* ${ad.tipS} ${ad.nmb}\n*Alimentador:* ${ad.nar}\n*Clientes interrompidos:* ${ad.nclSum}\n*Compensacao Financeira:* R$ ${compFormatado}\n*Equipe:* ${ad.numV}\n*Situacao:* ${statusText}\n*Observacao:*`;
                     var cardElement = $('<pre>').addClass('info-card').text(outputString2);
                     var copyButton = $('<button>').addClass('copy-button').text('Copiar');
 
