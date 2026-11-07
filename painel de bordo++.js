@@ -404,6 +404,7 @@ $(document).ready(function() {
                 var sn = rowData.nmb || 'N/A';
                 var ncl = parseInt(rowData.ncl, 10) || 0;
                 var tpe = parseInt(rowData.tpe, 10) || 0;
+                var chi = parseInt(rowData.qch, 10) || 0;
 
                 // Extrai o valor da Compensação Financeira da linha atual
                 var rawComp = table.cell(rowIdx, compColIndex).data();
@@ -412,7 +413,7 @@ $(document).ready(function() {
 				// Agrega dados:
                 if (!aggregatedData[sn]) {
                     aggregatedData[sn] = {
-                        nmb: sn, nclSum: ncl, compSum: comp, chiSum: 0, tpeSum: tpe,
+                        nmb: sn, nclSum: ncl, compSum: comp, chiSum: chi, tpeSum: tpe,
                         tipS: rowData.tip || 'MA', nar: rowData.nar || 'N/A',
                         status: rowData.sta || 'Pendente', numV: rowData.nve || 'Nenhuma',
                         mun: rowData.nmu || 'N/A', trafoRef: rowData.trr || 'N/A',
@@ -421,6 +422,7 @@ $(document).ready(function() {
                 } else {
                     aggregatedData[sn].nclSum += ncl;
                     aggregatedData[sn].compSum += comp;
+                    aggregatedData[sn].chiSum += chi;
                     if (tpe > aggregatedData[sn].tpeSum) {
                         aggregatedData[sn].tpeSum = tpe;
                     }
@@ -428,12 +430,12 @@ $(document).ready(function() {
             });
 
             // Calcula CHI após agregação
-            for (var sn in aggregatedData) {
-                if (aggregatedData.hasOwnProperty(sn)) {
-                    var ad = aggregatedData[sn];
-                    ad.chiSum = ad.nclSum * ad.tpeSum;
-                }
-            }
+            //for (var sn in aggregatedData) {
+            //    if (aggregatedData.hasOwnProperty(sn)) {
+            //        var ad = aggregatedData[sn];
+            //        ad.chiSum = ad.nclSum * ad.tpeSum;
+            //    }
+            //}
 
             var aggregatedDataArray = Object.values(aggregatedData);
             aggregatedDataArray.sort(function(a, b) {
@@ -450,8 +452,8 @@ $(document).ready(function() {
                 else statusText = "Pendente";
 
                 var compFormatado = ad.compSum.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-                var outputString = `O servico ${ad.tipS} ${ad.nmb}, tem ${ad.nclSum} clientes interrompidos ha ${ad.tpeSum}h, resultando em um CHI de ${ad.chiSum} no alimentador (${ad.nar}) de ${ad.mun}.`;
-                var outputStringRed = `O servico ${ad.tipS} ${ad.nmb}, tem ${ad.nclSum} clientes interrompidos ha ${ad.tpeSum}h, resultando em um CHI de ${ad.chiSum} (Comp. Financeira: R$ ${compFormatado}) no alimentador (${ad.nar}) de ${ad.mun}.`;
+                var outputString = `[ ${ad.tipS} ${ad.nmb} ] --- ${ad.nclSum} CLIENTES --- ${ad.tpeSum}H --- CHI DE ${ad.chiSum} --- R$ ${compFormatado} --- ${ad.nar} --- ${ad.mun}`;
+                var outputStringRed = `[ ${ad.tipS} ${ad.nmb} ] --- ${ad.nclSum} CLIENTES --- ${ad.tpeSum}H --- CHI DE ${ad.chiSum} --- R$ ${compFormatado} --- ${ad.nar} --- ${ad.mun}`;
 
                 // LÓGICA DE FILTRO DE POLO
                 let polString = ad.pol.toUpperCase();
@@ -556,7 +558,7 @@ $(document).ready(function() {
 
             // Define a cor de fundo das Areas com base na flag
 			if (hasHighInterruptionServicesUpper){
-				outputArea1.css('background-color', 'red');
+				outputArea1.css('background-color', 'orangered');
 				outputArea2.css('background-color', hasMediumInterruptionServices ? 'orange' : '#2e2e2e');
 				outputArea4.css('background-color', hasLowerInterruptionServices ? 'yellow' : '#2e2e2e');
 			} else {
