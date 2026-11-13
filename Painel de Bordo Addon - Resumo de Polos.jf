@@ -1,197 +1,109 @@
 // ==UserScript==
 // @name         Painel de Bordo Addon - Resumo de Polos
 // @namespace    marco.guedes.e259671
-// @version      1.1.1
-// @description  Cria cards de resumo quantitativo de serviços por município (Tela Local) e por tipo (Tela COD) para SJ e LF.
+// @version      3.2.1
+// @description  Cria cards de resumo quantitativo de serviços por município (Tela Local) e por tipo (Tela COD) para SJ e LF (Compatível com DataTables 3).
 // @author       Marco Guedes
 // @match        *https://geo.cemig.com.br/painel_de_bordo/Geo/Clientes*
 // @grant        none
 // ==/UserScript==
 
-// Aguarda a tabela principal ser completamente carregada pelo outro script/página
-let checkTableInterval = setInterval(function() {
-    if (typeof $ !== 'undefined' && $.fn.DataTable && $('#tabela-de-dados-clientes').length) {
-        let table = $('#tabela-de-dados-clientes').DataTable();
-        // Verifica se o objeto table realmente instanciou
-        if (table && table.rows) {
-            clearInterval(checkTableInterval);
-            iniciarAddonResumo(table);
-        }
-    }
-}, 1000); // Tenta a cada 1 segundo
+(function() {
+    'use strict';
 
-function iniciarAddonResumo(table) {
+    const ADDON_CONFIG = {
+        codTypes: ['RC09', 'RC08', 'RC11', 'NSRI', 'MA']
+    };
 
-    // Tipos de serviço que pertencem à TELA DO COD
-    const codTypes = ['RC09', 'RC08', 'RC11', 'NSRI', 'MA'];
-
-    // Injeta o CSS específico dos novos cards do Addon
-    var style = document.createElement('style');
-    style.innerHTML = `
-        #addon-resumo-area {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 10px;
-            width: 100%;
-            margin-top: 10px;
-            margin-bottom: 15px;
-        }
-        .addon-info-card {
-            width: calc(20% - 8px) !important;
-            min-width: 250px;
-            box-sizing: border-box;
-            padding: 10px;
-            border: 1px solid #444;
-            background-color: #fff;
-            margin: 0;
-            white-space: pre-wrap;
-            word-wrap: break-word;
-            position: relative;
-            padding-bottom: 30px;
-            font-family: courier new;
-            font-size: 12px;
-            color: #2e2e2e;
-        }
-        .addon-copy-button {
-            position: absolute;
-            bottom: 5px;
-            right: 5px;
-            padding: 2px 5px;
-            font-size: 0.8em;
-            cursor: pointer;
-            background-color: #007bff;
-            color: white;
-            border: none;
-            border-radius: 3px;
-            z-index: 10;
-        }
-        .addon-copy-button:hover {
-            background-color: #0056b3;
-        }
-    `;
-    document.head.appendChild(style);
-
-    // Cria a área onde os cards de resumo vão ficar
-    let addonArea = $('<div>').attr('id', 'addon-resumo-area');
-
-    // Insere essa área logo após o output-area-3 (se existir) ou após o wrapper da tabela
-    if ($('#output-area-3').length) {
-        $('#output-area-3').after(addonArea);
-    } else {
-        $('.dataTables_wrapper').after(addonArea);
+    function injectAddonStyles() {
+        if (document.getElementById('re-addon-resumo-styles')) return;
+        const style = document.createElement('style');
+        style.id = 're-addon-resumo-styles';
+        style.textContent = `
+            #re-addon-section { padding: 8px 16px 24px 16px; background-color: var(--re-bg-base, #18191a); }
+            .re-addon-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid #3a3b3c; }
+            .re-addon-title { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: #b0b3b8; }
+            #addon-resumo-area { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; width: 100%; }
+            .addon-card-wrapper { background-color: #ffffff; border: 1px solid #d1d5db; border-radius: 6px; display: flex; flex-direction: column; justify-content: space-between; overflow: hidden; }
+            .addon-card-top { display: flex; align-items: center; justify-content: space-between; background-color: #f3f4f6; padding: 6px 12px; border-bottom: 1px solid #e5e7eb; font-size: 11px; font-weight: 700; color: #374151; text-transform: uppercase; }
+            .addon-info-card { background-color: #ffffff !important; color: #111827 !important; border: none !important; margin: 0 !important; padding: 12px !important; font-family: 'Consolas', 'Courier New', monospace !important; font-size: 12px !important; line-height: 1.45 !important; white-space: pre-wrap !important; flex: 1; }
+            .addon-card-footer { display: flex; align-items: center; justify-content: flex-end; padding: 6px 10px; background-color: #f9fafb; border-top: 1px solid #e5e7eb; }
+            .addon-copy-button { background-color: #1a73e8 !important; color: #ffffff !important; border: none !important; border-radius: 4px !important; padding: 5px 12px !important; font-size: 11px !important; font-weight: 600 !important; letter-spacing: 0.4px; text-transform: uppercase; cursor: pointer; transition: background-color 0.15s ease; }
+            .addon-copy-button:hover { background-color: #1557b0 !important; }
+            .addon-copy-button.copied { background-color: #16a34a !important; }
+        `;
+        document.head.appendChild(style);
     }
 
-    // Essa função vai rodar sempre que a tabela for desenhada/atualizada
-    table.on('draw.dt', function() {
-        addonArea.empty(); // Limpa os cards antigos
+    function ensureContainerExists() {
+        if ($('#re-addon-section').length) return $('#addon-resumo-area');
+        const $section = $(`<div id="re-addon-section"><div class="re-addon-header"><span class="re-addon-title">Resumo Quantitativo por Polo (Tela Local & Tela COD)</span></div><div id="addon-resumo-area"></div></div>`);
 
-        let sjLocalCities = {};
-        let lfLocalCities = {};
-        let sjCodCounts = {};
-        let lfCodCounts = {};
-
-        let sjLocalTotal = 0;
-        let lfLocalTotal = 0;
-        let sjCodTotal = 0;
-        let lfCodTotal = 0;
-
-        // Set para garantir que cada serviço só seja contado uma vez (agrupamento de múltiplas linhas)
-        let processedSNs = new Set();
-
-        // Varre todas as linhas visíveis (aplicadas pelo filtro de pesquisa)
-        table.rows({ search: 'applied' }).every(function() {
-            var data = this.data();
-            var sn = (data.nmb || '').toUpperCase().trim();
-
-            // Ignora se não houver número ou se já contamos essa ocorrência nesta rodada
-            if (!sn || processedSNs.has(sn)) return;
-            processedSNs.add(sn);
-
-            var tipRaw = (data.tip || '').toUpperCase().trim();
-            var tip = tipRaw;
-
-            // Lógica de identificação de Manobras: se TIPO for vazio na tabela, terminar em -M OU começar com MA (ex: MA27)
-            if (tipRaw === '' || sn.endsWith('-M') || tipRaw.startsWith('MA')) {
-                tip = 'MA';
-            } else if (tip === '') {
-                tip = 'N/A';
-            }
-
-            var mun = (data.nmu || 'N/A').toUpperCase().trim();
-            var pol = (data.rag || 'N/A').toUpperCase().trim();
-
-            let isSJ = pol.includes('SJ') || pol.includes('JOÃO') || pol.includes('JOAO');
-            let isLF = pol.includes('LF') || pol.includes('LAF');
-
-            // Verifica se o tipo pertence à tela do COD
-            let isCOD = codTypes.includes(tip);
-
-            if (isSJ) {
-                if (isCOD) {
-                    sjCodCounts[tip] = (sjCodCounts[tip] || 0) + 1;
-                    sjCodTotal++;
-                } else {
-                    sjLocalCities[mun] = (sjLocalCities[mun] || 0) + 1;
-                    sjLocalTotal++;
-                }
-            } else if (isLF) {
-                if (isCOD) {
-                    lfCodCounts[tip] = (lfCodCounts[tip] || 0) + 1;
-                    lfCodTotal++;
-                } else {
-                    lfLocalCities[mun] = (lfLocalCities[mun] || 0) + 1;
-                    lfLocalTotal++;
-                }
-            }
-        });
-
-        // ================= GERAR TEXTO SJ =================
-        let sjText = `*❗${sjLocalTotal} EMERGENCIAIS NA TELA DE SJ:❗*\n\n`;
-        for (let city in sjLocalCities) {
-            sjText += `- ${sjLocalCities[city]} em ${city}\n`;
+        if ($('#re-cards-section').length) {
+            $('#re-cards-section').after($section);
+        } else {
+            const $tableWrapper = $('#tabela-de-dados-clientes_wrapper, .dt-container, .dataTables_wrapper').first();
+            if ($tableWrapper.length) $tableWrapper.parent().after($section);
+            else $('body').append($section);
         }
-        sjText += `\n*‼️${sjCodTotal} EMERGENCIAIS NA TELA DO COD.‼️*\n\n`;
-        for (let tip in sjCodCounts) {
-            let tipName = (tip === 'MA') ? 'Manobras' : tip;
-            sjText += `- ${sjCodCounts[tip]} ${tipName}\n`;
-        }
-        sjText += `\n*❕Comerciais em tela*: 0 || *Vencendo*: 0❕\n\n`;
-        createCard(sjText, addonArea);
+        return $('#addon-resumo-area');
+    }
 
-        // ================= GERAR TEXTO LF =================
-        let lfText = `*❗${lfLocalTotal} EMERGENCIAIS NA TELA DE LF:❗*\n\n`;
-        for (let city in lfLocalCities) {
-            lfText += `- ${lfLocalCities[city]} em ${city}\n`;
-        }
-        lfText += `\n*‼️${lfCodTotal} EMERGENCIAIS NA TELA DO COD.‼️*\n\n`;
-        for (let tip in lfCodCounts) {
-            let tipName = (tip === 'MA') ? 'Manobras' : tip;
-            lfText += `- ${lfCodCounts[tip]} ${tipName}\n`;
-        }
-        lfText += `\n*❕Comerciais em tela*: 0 || *Vencendo*: 0❕\n\n`;
-        createCard(lfText, addonArea);
-    });
-
-    // Função auxiliar para gerar a caixa de texto e botão copiar dinamicamente
-    function createCard(text, container) {
-        var cardElement = $('<pre>').addClass('addon-info-card').text(text);
-        var copyButton = $('<button>').addClass('addon-copy-button').text('Copiar');
-
-        copyButton.on('click', function() {
-            var fullCardText = $(this).parent('.addon-info-card').text();
-            var buttonText = $(this).text();
-            var textToCopy = fullCardText.replace(buttonText, '').trim(); // Remove a palavra "Copiar"
-
-            navigator.clipboard.writeText(textToCopy).then(function() {
-                var originalButtonText = $(this).text();
-                $(this).text('Copiado!').prop('disabled', true);
-                setTimeout(() => { $(this).text(originalButtonText).prop('disabled', false); }, 2000);
-            }.bind(this)).catch(function(err) {
-                console.error('Erro ao copiar texto do Addon: ', err);
+    function createSummaryCard(poloLabel, text, $container) {
+        const $wrapper = $(`<div class="addon-card-wrapper"><div class="addon-card-top"><span>Resumo Operacional — ${poloLabel}</span></div><pre class="addon-info-card"></pre><div class="addon-card-footer"><button type="button" class="addon-copy-button">COPIAR</button></div></div>`);
+        $wrapper.find('pre.addon-info-card').text(text);
+        $wrapper.find('.addon-copy-button').on('click', function() {
+            const $btn = $(this);
+            navigator.clipboard.writeText(text.trim()).then(() => {
+                $btn.text('COPIADO').addClass('copied').prop('disabled', true);
+                setTimeout(() => $btn.text('COPIAR').removeClass('copied').prop('disabled', false), 1800);
             });
         });
-
-        cardElement.append(copyButton);
-        container.append(cardElement);
+        $container.append($wrapper);
     }
-}
+
+    function renderPoloSummaries(servicesList) {
+        injectAddonStyles();
+        const $addonArea = ensureContainerExists().empty();
+
+        const sjLocalCities = {}; const lfLocalCities = {};
+        const sjCodCounts = {}; const lfCodCounts = {};
+        let sjLocalTotal = 0; let lfLocalTotal = 0;
+        let sjCodTotal = 0; let lfCodTotal = 0;
+
+        servicesList.forEach(ad => {
+            const tip = (ad.tipS || 'MA').toUpperCase().trim();
+            const mun = (ad.mun || 'N/A').toUpperCase().trim();
+            const isCOD = ADDON_CONFIG.codTypes.includes(tip);
+
+            if (ad.poloGroup === 'SJ') {
+                if (isCOD) { sjCodCounts[tip] = (sjCodCounts[tip] || 0) + 1; sjCodTotal++; }
+                else { sjLocalCities[mun] = (sjLocalCities[mun] || 0) + 1; sjLocalTotal++; }
+            } else if (ad.poloGroup === 'LF') {
+                if (isCOD) { lfCodCounts[tip] = (lfCodCounts[tip] || 0) + 1; lfCodTotal++; }
+                else { lfLocalCities[mun] = (lfLocalCities[mun] || 0) + 1; lfLocalTotal++; }
+            }
+        });
+
+        let sjText = `*❗${sjLocalTotal} EMERGENCIAIS NA TELA DE SJ:❗*\n\n`;
+        Object.keys(sjLocalCities).sort((a, b) => sjLocalCities[b] - sjLocalCities[a]).forEach(city => { sjText += `- ${sjLocalCities[city]} em ${city}\n`; });
+        sjText += `\n*‼️${sjCodTotal} EMERGENCIAIS NA TELA DO COD.‼️*\n\n`;
+        Object.keys(sjCodCounts).forEach(tip => { sjText += `- ${sjCodCounts[tip]} ${tip === 'MA' ? 'Manobras' : tip}\n`; });
+        sjText += `\n*❕Comerciais em tela*: 0 || *Vencendo*: 0❕\n\n`;
+        createSummaryCard('Polo São João (SJ)', sjText, $addonArea);
+
+        let lfText = `*❗${lfLocalTotal} EMERGENCIAIS NA TELA DE LF:❗*\n\n`;
+        Object.keys(lfLocalCities).sort((a, b) => lfLocalCities[b] - lfLocalCities[a]).forEach(city => { lfText += `- ${lfLocalCities[city]} em ${city}\n`; });
+        lfText += `\n*‼️${lfCodTotal} EMERGENCIAIS NA TELA DO COD.‼️*\n\n`;
+        Object.keys(lfCodCounts).forEach(tip => { lfText += `- ${lfCodCounts[tip]} ${tip === 'MA' ? 'Manobras' : tip}\n`; });
+        lfText += `\n*❕Comerciais em tela*: 0 || *Vencendo*: 0❕\n\n`;
+        createSummaryCard('Polo Lafaiete (LF)', lfText, $addonArea);
+    }
+
+    window.addEventListener('RealEnergy:DataProcessed', function(event) {
+        if (event && event.detail && Array.isArray(event.detail.services)) {
+            renderPoloSummaries(event.detail.services);
+        }
+    });
+
+})();
